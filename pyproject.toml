@@ -1,0 +1,14 @@
+[project]
+name = "mac-tapper"
+version = "0.1.0"
+description = "Автокликер для macOS с глобальной горячей клавишей"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "pynput>=1.7.7",
+    "pyobjc-framework-Quartz>=10.3",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+]
