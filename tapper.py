@@ -574,9 +574,9 @@ class App:
         self.events.put(("toggle", None))
 
     def _on_release(self, key) -> None:
-        hotkey = self._hotkey
-        if hotkey is not None and hotkey.matches(key):
-            self._hotkey_down = False
+        # Сбрасываем на любом отпускании: при зажатом модификаторе символ
+        # клавиши приходит другим, и сравнение с горячей клавишей не сойдётся.
+        self._hotkey_down = False
 
     # --- запуск и остановка ---
 
