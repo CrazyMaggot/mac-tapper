@@ -6,6 +6,7 @@ requires-python = ">=3.12,<3.13"
 dependencies = [
     "pynput>=1.7.7",
     "pyobjc-framework-Quartz>=10.3",
+    "pyobjc-framework-Cocoa>=10.3",
 ]
 
 [dependency-groups]

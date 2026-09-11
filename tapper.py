@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import atexit
 import json
+import os
 import queue
 import subprocess
 import sys
@@ -16,6 +17,7 @@ from pathlib import Path
 from tkinter import ttk
 
 import Quartz
+from AppKit import NSWorkspace
 from pynput import keyboard
 
 MIN_CPS = 0.01
@@ -209,6 +211,22 @@ def open_privacy_settings() -> None:
     subprocess.Popen(["open", PRIVACY_URL])
 
 
+def is_frontmost() -> bool:
+    """Наше ли приложение сейчас впереди. Tk на macOS про это не знает."""
+    try:
+        front = NSWorkspace.sharedWorkspace().frontmostApplication()
+    except Exception:
+        return False
+    return front is not None and front.processIdentifier() == os.getpid()
+
+
+def hotkey_suppressed(frontmost: bool, focused, entries) -> bool:
+    """Клавиша молчит, только когда мы сами впереди и курсор стоит в поле ввода."""
+    if not frontmost:
+        return False
+    return any(focused is entry for entry in entries)
+
+
 def _inside(point, rect) -> bool:
     x, y, w, h = rect
     return x <= point.x <= x + w and y <= point.y <= y + h
@@ -398,6 +416,7 @@ class App:
         self.test_window: TestWindow | None = None
 
         self._entry_focused = False
+        self._entries: tuple = ()
         self._hotkey_down = False
         self._hotkey: Hotkey | None = None
         self._start_time = 0.0
@@ -508,9 +527,7 @@ class App:
             wraplength=320,
         ).grid(row=row, column=0, columnspan=2, sticky="w", **pad)
 
-        for entry in (self.cps_entry, self.hotkey_entry, self.delay_entry, self.minutes_entry):
-            entry.bind("<FocusIn>", self._entry_focus_in)
-            entry.bind("<FocusOut>", self._entry_focus_out)
+        self._entries = (self.cps_entry, self.hotkey_entry, self.delay_entry, self.minutes_entry)
 
     def _apply_settings(self) -> None:
         s = self.settings
@@ -539,11 +556,12 @@ class App:
 
     # --- горячая клавиша ---
 
-    def _entry_focus_in(self, _event=None) -> None:
-        self._entry_focused = True
-
-    def _entry_focus_out(self, _event=None) -> None:
-        self._entry_focused = False
+    def _update_focus_guard(self) -> None:
+        try:
+            focused = self.root.focus_get()
+        except KeyError:
+            focused = None
+        self._entry_focused = hotkey_suppressed(is_frontmost(), focused, self._entries)
 
     def _reload_hotkey(self, quiet: bool = False) -> None:
         try:
@@ -661,6 +679,7 @@ class App:
                 if payload and payload != "Остановлен":
                     self._say(payload)
 
+        self._update_focus_guard()
         self._update_rects()
         self._update_stats()
         self.root.after(100, self._tick)
