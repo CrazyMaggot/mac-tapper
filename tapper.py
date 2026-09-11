@@ -226,6 +226,21 @@ def open_privacy_settings() -> None:
     subprocess.Popen(["open", PRIVACY_URL])
 
 
+def bundle_path() -> Path | None:
+    """Путь к приложению, если нас запустили из собранной обёртки, иначе None."""
+    raw = os.environ.get("TAPPER_BUNDLE", "").strip()
+    if not raw:
+        return None
+    path = Path(raw)
+    return path if path.exists() else None
+
+
+def reveal_bundle() -> None:
+    bundle = bundle_path()
+    if bundle is not None:
+        subprocess.Popen(["open", "-R", str(bundle)])
+
+
 def is_frontmost() -> bool:
     """Наше ли приложение сейчас впереди. Tk на macOS про это не знает."""
     try:
@@ -240,6 +255,11 @@ def hotkey_suppressed(frontmost: bool, focused, entries) -> bool:
     if not frontmost:
         return False
     return any(focused is entry for entry in entries)
+
+
+def log(message: str) -> None:
+    """Строка в журнал. У собранного приложения это ~/Library/Logs/tapper.log."""
+    print(f"[{time.strftime('%H:%M:%S')}] {message}", flush=True)
 
 
 def _inside(point, rect) -> bool:
@@ -449,6 +469,7 @@ class App:
         self._apply_settings()
         self._reload_hotkey(quiet=True)
 
+        log(f"окно готово, горячая клавиша {self.hotkey_var.get()!r}")
         self.listener = keyboard.Listener(on_press=self._on_press, on_release=self._on_release)
         self.listener.daemon = True
         self.listener.start()
@@ -661,6 +682,7 @@ class App:
         self._delay = delay
         self.clicker.start(cps, self.button_var.get(), delay, limit)
         self.toggle_button.configure(text="Стоп")
+        log(f"старт: {cps} в секунду, кнопка {self.button_var.get()}, задержка {delay} с")
 
     def open_test(self) -> None:
         if self.test_window is not None and self.test_window.winfo_exists():
@@ -695,6 +717,7 @@ class App:
                 self._say(payload)
             elif name == "stopped":
                 self.toggle_button.configure(text="Старт")
+                log(f"стоп: {payload}, кликов за сессию {self.clicker.clicks}")
                 if payload and payload != "Остановлен":
                     self._say(payload)
 
@@ -769,21 +792,32 @@ class App:
         window.resizable(False, False)
         body = ttk.Frame(window, padding=16)
         body.pack()
-        ttk.Label(
-            body,
-            wraplength=380,
-            text=(
+        bundle = bundle_path()
+        if bundle is not None:
+            explanation = (
+                "«Тапперу» не выдан «Универсальный доступ». Без него горячая клавиша "
+                "не сработает, а клики не дойдут до других приложений.\n\n"
+                f"Откройте настройки и добавьте в список «{bundle.stem}». Если его там "
+                "нет, перетащите приложение в список кнопкой «Показать в Finder». "
+                "После этого запустите «Таппер» заново."
+            )
+        else:
+            explanation = (
                 "Программе не выдан «Универсальный доступ». Без него горячая клавиша "
                 "не сработает, а клики не дойдут до других приложений.\n\n"
-                "Откройте настройки, включите в списке приложение, из которого запущен "
-                "таппер, и перезапустите его."
-            ),
-        ).pack(pady=(0, 12))
+                "Разрешение выдаётся не скрипту, а терминалу, из которого он запущен. "
+                "Включите свой терминал в списке и перезапустите его."
+            )
+        ttk.Label(body, wraplength=380, text=explanation).pack(pady=(0, 12))
         buttons = ttk.Frame(body)
         buttons.pack()
         ttk.Button(
             buttons, text="Открыть настройки", command=open_privacy_settings
         ).pack(side="left")
+        if bundle is not None:
+            ttk.Button(
+                buttons, text="Показать в Finder", command=reveal_bundle
+            ).pack(side="left", padx=(8, 0))
         ttk.Button(buttons, text="Закрыть", command=window.destroy).pack(side="left", padx=(8, 0))
 
 
