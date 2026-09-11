@@ -61,6 +61,17 @@ def _named_keys() -> dict[str, object]:
 
 NAMED_KEYS = _named_keys()
 
+# Физические коды клавиш основной раскладки. Символ зависит от языка ввода,
+# код нет, поэтому горячая клавиша «t» работает и когда включён русский.
+CHAR_VK = {
+    "a": 0, "s": 1, "d": 2, "f": 3, "h": 4, "g": 5, "z": 6, "x": 7, "c": 8,
+    "v": 9, "b": 11, "q": 12, "w": 13, "e": 14, "r": 15, "y": 16, "t": 17,
+    "1": 18, "2": 19, "3": 20, "4": 21, "6": 22, "5": 23, "=": 24, "9": 25,
+    "7": 26, "-": 27, "8": 28, "0": 29, "]": 30, "o": 31, "u": 32, "[": 33,
+    "i": 34, "p": 35, "l": 37, "j": 38, "'": 39, "k": 40, ";": 41, "\\": 42,
+    ",": 43, "/": 44, "n": 45, "m": 46, ".": 47, "`": 50,
+}
+
 
 @dataclass(frozen=True)
 class Hotkey:
@@ -69,10 +80,14 @@ class Hotkey:
     label: str
     char: str | None = None
     special: object | None = None
+    vk: int | None = None
 
     def matches(self, key) -> bool:
         if self.special is not None:
             return key == self.special
+        vk = getattr(key, "vk", None)
+        if self.vk is not None and vk is not None:
+            return vk == self.vk
         char = getattr(key, "char", None)
         if not char:
             return False
@@ -92,7 +107,7 @@ def parse_hotkey(text: str) -> Hotkey:
     if low in NAMED_KEYS:
         return Hotkey(label=low, special=NAMED_KEYS[low])
     if len(raw) == 1 and raw.isprintable() and not raw.isspace():
-        return Hotkey(label=low, char=low)
+        return Hotkey(label=low, char=low, vk=CHAR_VK.get(low))
     raise ValueError(f"Не понимаю клавишу «{raw}»")
 
 
@@ -131,7 +146,7 @@ def _to_float(text: str, what: str) -> float:
 class Settings:
     cps: float = 10.0
     button: str = "left"
-    hotkey: str = "f6"
+    hotkey: str = "t"
     delay: float = 0.5
     autostop_enabled: bool = False
     autostop_minutes: float = 1.0
@@ -522,7 +537,11 @@ class App:
         row += 1
         ttk.Label(
             frame,
-            text="Esc останавливает во время работы. Клики над этим окном заблокированы.",
+            text=(
+                "Esc останавливает во время работы. Клики над этим окном заблокированы.\n"
+                "Верхний ряд F1..F12 на MacBook по умолчанию занят медиафункциями: "
+                "либо включите их как обычные функциональные клавиши, либо возьмите букву."
+            ),
             foreground="#555555",
             wraplength=320,
         ).grid(row=row, column=0, columnspan=2, sticky="w", **pad)
@@ -780,7 +799,37 @@ def _safe_float(text: str, fallback: float) -> float:
         return fallback
 
 
+def watch_keys(seconds: float = 20.0) -> int:
+    """Показывает, что именно программа видит при нажатии клавиш."""
+    can_post, can_listen = permission_status()
+    print("Разрешение на отправку событий:", "есть" if can_post else "НЕТ")
+    print("Разрешение на прослушивание:   ", "есть" if can_listen else "НЕТ")
+    if not can_listen:
+        request_permissions()
+    print(f"\nНажимайте клавиши {seconds:.0f} секунд.\n")
+
+    def on_press(key):
+        print(
+            f"  {key!r:<24} символ={getattr(key, 'char', None)!r:<6}"
+            f" код={getattr(key, 'vk', None)} имя={getattr(key, 'name', None)}"
+        )
+
+    listener = keyboard.Listener(on_press=on_press)
+    listener.start()
+    try:
+        listener.join(timeout=seconds)
+    except KeyboardInterrupt:
+        pass
+    listener.stop()
+    print("\nКлавиша, которой нет в списке, до программы не доходит.")
+    print("Верхний ряд MacBook по умолчанию отдаёт медиафункции вместо F1..F12.")
+    print("Включается в настройках клавиатуры или нажатием вместе с Fn.")
+    return 0
+
+
 def main() -> int:
+    if "--keys" in sys.argv[1:]:
+        return watch_keys()
     sys.setswitchinterval(0.0005)
     root = tk.Tk()
     App(root)
